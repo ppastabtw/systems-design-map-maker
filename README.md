@@ -19,7 +19,7 @@ npm ci
 npm start
 ```
 
-Open [the local preview](http://127.0.0.1:4173/). Run `npm test` for the analyzer and export checks or `npm run build` to build the static browser app into `dist/`.
+Open [the local preview](http://127.0.0.1:4173/). Opening `web/index.html` from disk takes you to the [hosted app](https://ppastabtw.github.io/systems-design-map-maker/). Run `npm test` for the analyzer and export checks or `npm run build` to build the static browser app into `dist/`.
 
 ## Generate a portfolio diagram
 

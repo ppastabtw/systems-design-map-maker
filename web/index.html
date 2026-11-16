@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Turn a GitHub repository or local project folder into a high-level system diagram.">
   <title>System Map — Repository architecture diagrams</title>
+  <script>
+    if (location.protocol === 'file:') {
+      const hostedApp = new URL('https://ppastabtw.github.io/systems-design-map-maker/');
+      const repository = new URLSearchParams(location.hash.slice(1)).get('repository') ??
+        new URLSearchParams(location.search).get('repository');
+      if (repository) hostedApp.hash = new URLSearchParams({ repository }).toString();
+      location.replace(hostedApp.href);
+    }
+  </script>
   <link rel="icon" href="./mark.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,6 +33,7 @@
     <section class="intro" aria-labelledby="page-title">
       <h1 id="page-title">See how your project <em>fits together.</em></h1>
       <p>Turn a repository into a high-level system diagram.</p>
+      <noscript><p>Enable JavaScript and open <a href="https://ppastabtw.github.io/systems-design-map-maker/">System Map</a> to generate a diagram.</p></noscript>
       <form id="github-form">
         <label class="sr-only" for="repo-url">GitHub repository URL</label>
         <div class="source-input"><span data-icon="github"></span><input id="repo-url" name="repository" placeholder="https://github.com/owner/repo" required autocomplete="off" spellcheck="false"></div>

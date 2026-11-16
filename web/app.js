@@ -194,3 +194,9 @@ function download(content, extension, type) {
 get('export-svg').addEventListener('click', () => download(diagramSvg(graph, { layout }), 'svg', 'image/svg+xml'));
 get('export-excalidraw').addEventListener('click', () => download(JSON.stringify(excalidrawScene(graph, layout), null, 2), 'excalidraw', 'application/json'));
 show(demoGraph, true);
+
+const linkedRepository = new URLSearchParams(location.hash.slice(1)).get('repository');
+if (linkedRepository?.trim()) {
+  get('repo-url').value = linkedRepository;
+  get('github-form').requestSubmit();
+}

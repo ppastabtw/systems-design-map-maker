@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { analyzeRepository } from '../src/analyze.js';
@@ -26,10 +26,14 @@ async function main() {
   const graph = analyzeRepository(repo);
   const layout = layoutDiagram(graph);
   const output = resolve(values.out);
+  const [font, fontLicense] = await Promise.all([
+    readFile(new URL('../assets/Excalifont.woff2', import.meta.url), 'base64'),
+    readFile(new URL('../assets/Excalifont-OFL.txt', import.meta.url), 'utf8')
+  ]);
   const json = value => JSON.stringify(value, null, 2) + '\n';
   await mkdir(output, { recursive: true });
   await Promise.all([
-    writeFile(join(output, 'system-map.svg'), diagramSvg(graph, { layout })),
+    writeFile(join(output, 'system-map.svg'), diagramSvg(graph, { layout, fontUrl: 'data:font/woff2;base64,' + font, fontLicense })),
     writeFile(join(output, 'system-map.excalidraw'), json(excalidrawScene(graph, layout))),
     writeFile(join(output, 'system-map.json'), json(graph))
   ]);

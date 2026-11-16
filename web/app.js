@@ -2,10 +2,11 @@ import { analyzeRepository } from '../src/analyze.js';
 import { diagramSvg, excalidrawScene, layoutDiagram, styles, xml } from '../src/diagram.js';
 import { readBrowserFolder, readGitHub } from '../src/repository.js';
 import { demoGraph } from '../src/demo.js';
+import fontUrl from '../assets/Excalifont.woff2';
+import fontLicense from '../assets/Excalifont-OFL.txt';
 
 const icons = {
   github: '<path d="M9 19c-4.3 1.4-4.3-2.4-6-2.9m12 5v-3.4a3 3 0 0 0-.8-2.2c2.7-.3 5.6-1.3 5.6-6A4.7 4.7 0 0 0 18.5 6a4.4 4.4 0 0 0-.1-3.4s-1-.3-3.5 1.3a13.4 13.4 0 0 0-6.3 0C6.2 2.3 5.1 2.6 5.1 2.6A4.4 4.4 0 0 0 5 6a4.7 4.7 0 0 0-1.3 3.4c0 4.7 2.9 5.7 5.6 6a3 3 0 0 0-.8 2.2V21"/>',
-  external: '<path d="M13 5h6v6m0-6-9 9m7 0v5H5V7h5"/>',
   arrow: '<path d="M4 12h15m-6-6 6 6-6 6"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9H3z"/>',
   map: '<rect x="3" y="8" width="6" height="8" rx="1.5"/><rect x="15" y="3" width="6" height="7" rx="1.5"/><rect x="15" y="14" width="6" height="7" rx="1.5"/><path d="M9 12h3v-5h3m-3 5v5h3"/>',
@@ -60,11 +61,12 @@ function evidence(path) {
 
 function selectNode(id) {
   const node = graph.nodes.find(item => item.id === id);
-  if (!node) return;
   drawing.querySelectorAll('[data-node]').forEach(item => {
     item.classList.toggle('active', item.dataset.node === id);
     item.setAttribute('aria-pressed', String(item.dataset.node === id));
   });
+  inspector.hidden = !node;
+  if (!node) return;
   const style = styles[node.type];
   const related = graph.edges.filter(edge => edge.from === id || edge.to === id);
   const files = node.evidence.map(path => `<li class="evidence">${evidence(path)}</li>`).join('');
@@ -76,7 +78,8 @@ function selectNode(id) {
       <span>${xml(edge.label)}${edge.inferred ? ' · Inferred' : ''}</span></button>
       <div class="connection-files">${edge.evidence.map(evidence).join('<br>')}</div></li>`;
   }).join('');
-  inspector.innerHTML = `<span class="type" style="background:${style.light};color:${style.ink}">${style.label}</span>
+  inspector.innerHTML = `<button class="dismiss" type="button" aria-label="Close component details" data-dismiss>×</button>
+    <span class="type" style="background:${style.light};color:${style.ink}">${style.label}</span>
     <h3>${xml(node.title)}</h3><p class="tech">${xml(node.tech)}</p>
     <section><h4>Source evidence</h4>${files ? `<ul>${files}</ul>` : '<p class="empty">No source references.</p>'}</section>
     <section><h4>Connections</h4>${connections ? `<ul>${connections}</ul>` : '<p class="empty">No connections detected.</p>'}</section>`;
@@ -90,11 +93,10 @@ function show(next, isExample = false) {
   const components = `${graph.nodes.length} component${graph.nodes.length === 1 ? '' : 's'}`;
   get('map-meta').textContent = isExample ? `Example map · ${components}` : `${components} · ${graph.filesScanned} files read`;
   get('scan-notes').textContent = graph.notes.join(' ');
+  get('inferred-key').hidden = !graph.edges.some(edge => edge.inferred);
   drawing.style.width = `${layout.width}px`;
-  drawing.innerHTML = diagramSvg(graph, { interactive: true, layout });
-  const palette = [...new Set(layout.nodes.map(node => node.type))];
-  get('legend').innerHTML = palette.map(type => `<span><i style="background:${styles[type].light};border-color:${styles[type].border}"></i>${styles[type].label}</span>`).join('');
-  selectNode(graph.nodes.find(node => node.type === 'api')?.id ?? graph.nodes[0]?.id);
+  drawing.innerHTML = diagramSvg(graph, { interactive: true, layout, fontUrl });
+  selectNode();
   fit();
 }
 
@@ -154,6 +156,7 @@ new ResizeObserver(fit).observe(canvas);
 
 canvas.addEventListener('pointerdown', event => {
   if (event.button !== 0 || event.target.closest('[data-node]')) return;
+  selectNode();
   drag = { id: event.pointerId, x: event.clientX - view.x, y: event.clientY - view.y };
   canvas.setPointerCapture(event.pointerId);
   canvas.classList.add('dragging');
@@ -175,6 +178,12 @@ drawing.addEventListener('keydown', event => {
   selectNode(event.target.closest('[data-node]')?.dataset.node);
 });
 inspector.addEventListener('click', event => {
+  if (event.target.closest('[data-dismiss]')) {
+    const selected = drawing.querySelector('[data-node].active');
+    selectNode();
+    selected?.focus();
+    return;
+  }
   const id = event.target.closest('[data-target]')?.dataset.target;
   if (id) {
     selectNode(id);
@@ -191,7 +200,7 @@ function download(content, extension, type) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-get('export-svg').addEventListener('click', () => download(diagramSvg(graph, { layout }), 'svg', 'image/svg+xml'));
+get('export-svg').addEventListener('click', () => download(diagramSvg(graph, { layout, fontUrl, fontLicense }), 'svg', 'image/svg+xml'));
 get('export-excalidraw').addEventListener('click', () => download(JSON.stringify(excalidrawScene(graph, layout), null, 2), 'excalidraw', 'application/json'));
 show(demoGraph, true);
 

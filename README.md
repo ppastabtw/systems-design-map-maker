@@ -42,3 +42,4 @@ System Map samples source files, package manifests, and deployment configuration
 The map is a starting point for review. Custom layouts, unrecognized stacks, and runtime or infrastructure defined outside a repo can leave gaps. Large trees are sampled and maps show up to 12 components. GitHub's anonymous API has request limits. A local checkout is an alternative when the repository is private or GitHub limits requests.
 
 Inspired by [Docbot](https://github.com/ariobarin/docbot).
+The diagram uses [Rough.js](https://roughjs.com/) and [Excalifont](https://plus.excalidraw.com/excalifont), distributed under its [SIL Open Font License](assets/Excalifont-OFL.txt).

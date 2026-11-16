@@ -71,6 +71,8 @@ test('exports labels, escaped XML, and editable Excalidraw elements for a cyclic
   assert.equal(scene.type, 'excalidraw');
   assert.equal(scene.elements.filter(item => item.type === 'rectangle').length, 2);
   assert.equal(scene.elements.filter(item => item.type === 'arrow').length, 2);
+  assert.ok(scene.elements.filter(item => item.type === 'rectangle').every(item => item.fillStyle === 'hachure'));
+  assert.ok(scene.elements.filter(item => item.type === 'text').every(item => item.fontFamily === 5));
   assert.ok(scene.elements.some(item => item.text === 'Reads / writes'));
 });
 

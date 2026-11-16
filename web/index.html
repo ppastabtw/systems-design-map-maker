@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Turn a GitHub repository or local project folder into a high-level system diagram.">
+  <title>System Map — Repository architecture diagrams</title>
+  <link rel="icon" href="./mark.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-content">
+      <a class="brand" href="./"><img src="./mark.svg" alt="" width="34" height="34">System Map</a>
+      <a class="repo-link" href="https://github.com/ppastabtw/systems-design-map-maker" target="_blank" rel="noopener">
+        <span data-icon="github"></span><span>Source on GitHub</span><span class="external-icon" data-icon="external"></span>
+      </a>
+    </div>
+  </header>
+  <main class="page">
+    <section class="intro" aria-labelledby="page-title">
+      <h1 id="page-title">See how your project <em>fits together.</em></h1>
+      <p>Turn a repository into a high-level system diagram.</p>
+      <form id="github-form">
+        <label class="sr-only" for="repo-url">GitHub repository URL</label>
+        <div class="source-input"><span data-icon="github"></span><input id="repo-url" name="repository" placeholder="https://github.com/owner/repo" required autocomplete="off" spellcheck="false"></div>
+        <button class="primary" type="submit" id="generate"><span id="generate-text">Generate map</span><span data-icon="arrow"></span></button>
+      </form>
+      <div class="source-actions">
+        <button class="file-button" id="open-folder" type="button"><span data-icon="folder"></span>Open a local folder</button>
+        <input hidden type="file" id="folder-input" webkitdirectory multiple>
+        <span class="dot-divider">·</span><span>Local files stay on your device</span>
+      </div>
+      <p id="status" role="status" aria-live="polite" hidden></p>
+    </section>
+    <section class="workspace" aria-label="Architecture workspace">
+      <header class="workspace-header">
+        <div class="workspace-name">
+          <span class="workspace-icon" data-icon="map"></span>
+          <div><h2 id="map-title"></h2><p id="map-meta"></p></div>
+        </div>
+        <div class="exports">
+          <button class="secondary" id="export-svg"><span data-icon="download"></span> SVG</button>
+          <button class="secondary export-drawing" id="export-excalidraw"><span data-icon="download"></span> Excalidraw</button>
+        </div>
+      </header>
+      <div class="workspace-body">
+        <div class="canvas-shell">
+          <div id="canvas" aria-label="System diagram. Drag to pan or use the zoom controls."><div id="drawing"></div></div>
+          <div class="canvas-controls" aria-label="Diagram view">
+            <button id="zoom-out" aria-label="Zoom out" title="Zoom out"><span data-icon="minus"></span></button>
+            <output id="zoom-level" aria-label="Zoom level"></output>
+            <button id="zoom-in" aria-label="Zoom in" title="Zoom in"><span data-icon="plus"></span></button>
+            <button id="fit" aria-label="Fit diagram" title="Fit diagram"><span data-icon="fit"></span></button>
+          </div>
+        </div>
+        <aside class="inspector" id="inspector" aria-label="Component details"></aside>
+      </div>
+      <footer class="workspace-footer">
+        <div id="legend" class="legend" aria-label="Component types"></div>
+        <span class="inferred-key"><i></i> Inferred connection</span>
+      </footer>
+    </section>
+    <div class="page-footer"><button class="text-button" id="sample">Load example</button><span id="scan-notes"></span></div>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

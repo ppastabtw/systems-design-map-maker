@@ -1,5 +1,8 @@
 import { parseAllDocuments } from 'yaml';
 
+const importPattern = /(?:\bfrom\s+|\brequire\s*\(\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]|^\s*(?:from\s+([.\w]+)\s+import\b|(?:import|using|use)\s+([\w.]+))/gm;
+const sourceImports = content => [...content.matchAll(importPattern)].map(match => match[1] ?? match[2] ?? match[3]);
+
 const runtimeSignals = [
   ['frontend', 'Next.js', /(?:["']next(?:\/[^"']*)?["']|next\/server)/i],
   ['frontend', 'Nuxt', /["'](?:nuxt|#app)["']/i],
@@ -8,22 +11,22 @@ const runtimeSignals = [
   ['frontend', 'Vue', /["']vue["']/i],
   ['frontend', 'React', /["'](?:react|react-dom)(?:\/[^"']*)?["']/i],
   ['frontend', 'Flutter', /package:flutter|^\s+sdk:\s*flutter/m],
-  ['worker', 'Celery', /\b(?:from celery\b|Celery\()/],
-  ['worker', 'BullMQ', /\bnew Worker\s*\(|(?:from|require\()\s*["']bullmq["']/],
-  ['api', 'FastAPI', /\b(?:FastAPI\(|from fastapi\b)/],
-  ['api', 'Django', /\bdjango\.(?:urls|conf|core|http|db)\b|DJANGO_SETTINGS_MODULE/],
-  ['api', 'Flask', /\b(?:from flask\b|Flask\()/],
-  ['api', 'Express', /\bexpress\(\)|["']express["']/],
-  ['api', 'Fastify', /\bfastify\(|["']fastify["']/i],
-  ['api', 'Hono', /\bnew Hono\(|["']hono["']/],
-  ['api', 'NestJS', /@nestjs\/core|NestFactory\.create/],
-  ['api', 'ASP.NET', /Microsoft\.NET\.Sdk\.Web|WebApplication\.CreateBuilder/],
-  ['api', 'Spring Boot', /spring-boot-starter-web|@SpringBootApplication/],
-  ['api', 'Rails', /Rails\.application|gem\s+['"]rails['"]/],
-  ['api', 'Laravel', /laravel\/framework|Illuminate\\Routing/],
-  ['api', 'Go HTTP', /http\.ListenAndServe\b|gin\.Default\(|echo\.New\(|fiber\.New\(/],
-  ['api', 'Axum', /axum::(?:Router|routing|serve)/],
-  ['api', 'HTTP server', /\bcreateServer\(|HttpServer::new\(|@RestController/]
+  ['worker', 'Celery', /(?:^|[\s'"])celery(?:[.\s<=>~'"]|$)/mi, /\bCelery\(/],
+  ['worker', 'BullMQ', /["']bullmq["']/],
+  ['api', 'FastAPI', /(?:^|[\s'"])fastapi(?:[.\s<=>~'"]|$)/mi, /\bFastAPI\(/],
+  ['api', 'Django', /(?:^|[\s'"])django(?:[.\s<=>~'"]|$)/mi, /['"]DJANGO_SETTINGS_MODULE['"]/],
+  ['api', 'Flask', /(?:^|[\s'"])flask(?:[.\s<=>~'"]|$)/mi, /\bFlask\(/],
+  ['api', 'Express', /["']express["']/, /\bexpress\(\)/],
+  ['api', 'Fastify', /["']fastify["']/i, /\bfastify\(/i],
+  ['api', 'Hono', /["']hono["']/, /\bnew Hono\(/],
+  ['api', 'NestJS', /@nestjs\/core/, /\bNestFactory\.create\(/],
+  ['api', 'ASP.NET', /Microsoft\.NET\.Sdk\.Web/, /\bWebApplication\.CreateBuilder\(/],
+  ['api', 'Spring Boot', /spring-boot-starter-web/, /^\s*@SpringBootApplication\b/m],
+  ['api', 'Rails', /gem\s+['"]rails['"]/, /\bRails\.application\.routes\b/],
+  ['api', 'Laravel', /laravel\/framework/, /\bIlluminate\\Routing\\/],
+  ['api', 'Go HTTP', /github\.com\/(?:gin-gonic\/gin|labstack\/echo|gofiber\/fiber)/, /\b(?:http\.ListenAndServe|gin\.Default|echo\.New|fiber\.New)\(/],
+  ['api', 'Axum', /^\s*axum\s*=/m, /\baxum::(?:Router|routing|serve)/],
+  ['api', 'HTTP server', null, /\b(?:createServer|HttpServer::new)\(|^\s*@RestController\b/m]
 ];
 
 const resourceSignals = [
@@ -107,8 +110,10 @@ function runtimeFor(root, files, info) {
   const kind = /^(?:web|frontend|client|dashboard)$/.test(structural) ? 'frontend' :
     /^(?:api|backend|server)$/.test(structural) ? 'api' :
     /^(?:worker|workers|jobs)$/.test(structural) ? 'worker' : structural ? 'cli' : null;
-  const match = runtimeSignals.map(([type, tech, pattern]) => {
-    const evidence = files.find(file => pattern.test(file.kind === 'manifest' ? packageInfo(file).dependencies || '' : file.content));
+  const signatures = files.map(file => ({ ...file, dependencies: file.kind === 'manifest' ?
+    packageInfo(file).dependencies ?? '' : sourceImports(file.content).map(name => JSON.stringify(name)).join(' ') }));
+  const match = runtimeSignals.map(([type, tech, dependency, entry]) => {
+    const evidence = signatures.find(file => dependency?.test(file.dependencies) || (file.kind === 'code' && entry?.test(file.content)));
     return evidence ? { type, tech, evidence: evidence.path } : null;
   }).filter(Boolean);
   if (kind === 'worker') return match.find(signal => signal.type === kind) ?? { type: kind };
@@ -192,7 +197,7 @@ export function analyzeRepository(repository) {
   for (const file of files.filter(file => file.kind === 'code')) {
     const root = directory(file.path);
     const candidate = file.path.match(/(?:^|\/)(?:server|asgi|wsgi|routes|app|main)\.[\w]+$/i);
-    const api = runtimeSignals.some(([type, , pattern]) => type === 'api' && pattern.test(file.content));
+    const api = runtimeSignals.some(([type, , , entry]) => type === 'api' && entry?.test(file.content));
     if (root && candidate && api && cliRoots.some(parent => root !== parent && (!parent || root.startsWith(parent + '/'))) &&
       ![...units.keys()].some(other => other && (root === other || root.startsWith(other + '/')))) {
       units.set(root, file.path);
@@ -267,7 +272,6 @@ export function analyzeRepository(repository) {
     }
   }
 
-  const imports = /(?:\bfrom\s+|\brequire\s*\(\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]|^\s*(?:from\s+([.\w]+)\s+import\b|(?:import|using|use)\s+([\w.]+))/gm;
   function existingPath(target) {
     return knownPaths.has(target) || ['.js', '.ts', '.tsx', '.jsx', '.py', '.rs', '.vue', '/index.js', '/index.ts', '/__init__.py']
       .some(extension => knownPaths.has(target + extension)) || knownPaths.has(target.replace(/\.js$/, '.ts'));
@@ -278,7 +282,7 @@ export function analyzeRepository(repository) {
     if (root === undefined) continue;
     const from = `unit:${root}`;
     const content = file.kind === 'manifest' ? packageInfo(file).dependencies ?? '' : file.content;
-    const specifiers = file.kind === 'code' ? [...content.matchAll(imports)].map(match => match[1] ?? match[2] ?? match[3]) : [];
+    const specifiers = file.kind === 'code' ? sourceImports(content) : [];
     const configValues = [...content.matchAll(/(?:\b(?:process\.env|os\.environ)\.([A-Z][A-Z_]+)|['"]([A-Z][A-Z_]+)['"]|['"]((?:[a-z]+(?:\+[a-z]+)?):\/\/[^'"\s]+)['"])/g)]
       .map(match => match[1] ?? match[2] ?? match[3]).join(' ');
     for (const [id, title, type, pattern] of resourceSignals) {

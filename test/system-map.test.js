@@ -48,7 +48,7 @@ test('a library does not get services merely mentioned in its docs or source str
   const graph = scan({
     'package.json': '{"name":"tiny","exports":"./index.js","devDependencies":{"pg":"1"}}',
     'README.md': 'Could work with PostgreSQL, Redis, or Stripe',
-    'index.js': 'export const database = "Redis and PostgreSQL example";'
+    'index.js': 'export const frameworks = ["Nuxt", "React", "Express"]; export const database = "Redis and PostgreSQL example";'
   });
   assert.deepEqual(graph.nodes.map(node => node.type), ['library']);
   assert.deepEqual(graph.edges, []);

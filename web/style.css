@@ -87,8 +87,6 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 .canvas-shell { position: relative; min-height: max(395px, calc(100dvh - 189px)); overflow: clip; background: #fff; }
 #canvas {
   position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab;
-  background-image: radial-gradient(#e4e0ed .85px, transparent .85px);
-  background-size: 23px 23px; background-position: 3px 5px;
 }
 #canvas.dragging { cursor: grabbing; }
 #drawing { position: absolute; inset: 0 auto auto 0; transform-origin: top left; user-select: none; }
@@ -121,6 +119,7 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 .inspector h3 { margin: 0; font-size: 17px; letter-spacing: -.035em; overflow-wrap: anywhere; }
 .inspector .type { display: inline-flex; font-size: 10px; padding: 3px 6px; border-radius: 4px; margin: 0 22px 7px 0; }
 .inspector .tech { color: var(--muted); font-size: 12px; margin: 3px 0 11px; }
+.inspector .role { margin: 0; font-size: 13px; line-height: 1.45; }
 .inspector section { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
 .inspector section h4 { margin: 0 0 7px; color: var(--muted); font-size: 11px; font-weight: 650; }
 .inspector ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }

@@ -23,6 +23,8 @@ test('recognizes a Compose monorepo and preserves explicit links and their sourc
   assert.deepEqual(graph.nodes.map(node => node.type).sort(), ['api', 'database', 'external', 'frontend', 'queue', 'worker']);
   const edge = (from, to) => graph.edges.find(item => item.from === from && item.to === to);
   assert.equal(edge('unit:apps/web', 'unit:apps/api').label, 'HTTP');
+  assert.equal(edge('unit:apps/web', 'unit:apps/api').flow, 'Requests orders');
+  assert.equal(graph.nodes.find(item => item.id === 'unit:apps/worker').role, 'Runs jobs from the orders queue');
   assert.equal(edge('unit:apps/api', 'resource:postgres').inferred, false);
   assert.ok(edge('unit:apps/api', 'resource:postgres').evidence.includes('compose.yaml'));
   assert.equal(edge('unit:apps/api', 'resource:stripe').inferred, true);
@@ -31,9 +33,9 @@ test('recognizes a Compose monorepo and preserves explicit links and their sourc
 
 test('finds a Python CLI, its bundled API, and a separate web app', () => {
   const graph = scan({
-    'pyproject.toml': '[project]\nname = "planner"\n[project.scripts]\nplanner = "planner.cli:app"',
+    'pyproject.toml': '[project]\nname = "planner"\ndescription = "Generate team schedules using local data."\n[project.scripts]\nplanner = "planner.cli:app"',
     'src/planner/cli.py': 'from .web.server import app',
-    'src/planner/web/server.py': 'from fastapi import FastAPI\napp = FastAPI()',
+    'src/planner/web/server.py': 'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/api/schedule")',
     'src/planner/llm.py': 'PARTNER_BASE_URL = "https://api.partner.dev/v1"',
     'webapp/package.json': '{"name":"planner-web","dependencies":{"react":"1"}}',
     'webapp/src/App.jsx': 'fetch("/api/schedule")'
@@ -41,6 +43,9 @@ test('finds a Python CLI, its bundled API, and a separate web app', () => {
   assert.deepEqual(graph.nodes.map(node => [node.type, node.tech]),
     [['api', 'FastAPI'], ['frontend', 'React'], ['cli', 'CLI'], ['external', 'HTTP endpoint']]);
   assert.equal(graph.edges.find(item => item.from === 'unit:webapp').label, 'HTTP');
+  assert.deepEqual(graph.nodes.map(node => node.role), ['Serves schedule data', 'Shows schedule data',
+    'Generates team schedules', 'Provides an external API']);
+  assert.equal(graph.nodes.find(node => node.type === 'api').roleEvidence, 'src/planner/web/server.py');
   assert.equal(graph.edges.find(item => item.to === 'host:partner.dev').inferred, true);
 });
 
@@ -54,6 +59,16 @@ test('a library does not get services merely mentioned in its docs or source str
   assert.deepEqual(graph.edges, []);
 });
 
+test('labels a configured gateway and cache without treating startup ordering as traffic', () => {
+  const graph = scan({
+    'compose.yaml': 'services:\n  gateway:\n    image: traefik:v3\n    depends_on: [cache]\n  cache:\n    image: memcached:1.6'
+  });
+  assert.deepEqual(graph.nodes.map(node => [node.type, node.role]), [
+    ['gateway', 'Handles incoming web traffic'], ['cache', 'Keeps frequently used data in memory']
+  ]);
+  assert.equal(graph.edges[0].label, 'Depends on');
+});
+
 test('exports labels, escaped XML, and editable Excalidraw elements for a cyclic graph', () => {
   const graph = {
     repository: { name: '<example>' },
@@ -65,15 +80,28 @@ test('exports labels, escaped XML, and editable Excalidraw elements for a cyclic
   assert.equal(layout.edges.length, 2);
   const svg = diagramSvg(graph, { layout });
   assert.match(svg, /A &amp; B/);
+  assert.match(svg, /Stores application data/);
   assert.match(svg, /Reads \/ writes/);
   assert.match(svg, /stroke-dasharray/);
   const scene = excalidrawScene(graph, layout);
   assert.equal(scene.type, 'excalidraw');
-  assert.equal(scene.elements.filter(item => item.type === 'rectangle').length, 2);
+  const database = layout.nodes.findIndex(node => node.id === 'b');
+  assert.ok(scene.elements.some(item => item.type === 'ellipse' && item.groupIds.includes(`node-${database}-group`)));
   assert.equal(scene.elements.filter(item => item.type === 'arrow').length, 2);
-  assert.ok(scene.elements.filter(item => item.type === 'rectangle').every(item => item.fillStyle === 'hachure'));
-  assert.ok(scene.elements.filter(item => item.type === 'text').every(item => item.fontFamily === 5));
+  assert.ok(scene.elements.some(item => item.text === 'Stores application data' && item.fontFamily === 2));
   assert.ok(scene.elements.some(item => item.text === 'Reads / writes'));
+});
+
+test('two reciprocal imports share one arrow and label in the drawing', () => {
+  const graph = {
+    repository: { name: 'example' },
+    nodes: [{ id: 'cli', title: 'CLI', type: 'cli' }, { id: 'api', title: 'API', type: 'api' }],
+    edges: [{ from: 'cli', to: 'api', label: 'Imports' }, { from: 'api', to: 'cli', label: 'Imports' }]
+  };
+  const layout = layoutDiagram(graph);
+  assert.equal(layout.edges.length, 1);
+  assert.match(diagramSvg(graph, { layout }), /Shares code/);
+  assert.ok(excalidrawScene(graph, layout).elements.some(item => item.type === 'arrow' && item.startArrowhead === 'arrow'));
 });
 
 test('reads a selected local folder without opening its ignored files', async () => {

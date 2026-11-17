@@ -2,6 +2,7 @@ import { analyzeRepository } from '../src/analyze.js';
 import { diagramSvg, excalidrawScene, layoutDiagram, styles, xml } from '../src/diagram.js';
 import { readBrowserFolder, readGitHub } from '../src/repository.js';
 import { demoGraph } from '../src/demo.js';
+import { componentRole, connectionRole } from '../src/roles.js';
 import fontUrl from '../assets/Excalifont.woff2';
 import fontLicense from '../assets/Excalifont-OFL.txt';
 
@@ -69,18 +70,20 @@ function selectNode(id) {
   if (!node) return;
   const style = styles[node.type];
   const related = graph.edges.filter(edge => edge.from === id || edge.to === id);
-  const files = node.evidence.map(path => `<li class="evidence">${evidence(path)}</li>`).join('');
+  const files = [...new Set([node.roleEvidence, ...node.evidence].filter(Boolean))]
+    .map(path => `<li class="evidence">${evidence(path)}</li>`).join('');
   const connections = related.map(edge => {
     const outgoing = edge.from === id;
     const other = graph.nodes.find(item => item.id === (outgoing ? edge.to : edge.from));
     return `<li><button class="connection" data-target="${xml(other.id)}">
       <strong>${outgoing ? '→' : '←'} ${xml(other.title)}</strong>
-      <span>${xml(edge.label)}${edge.inferred ? ' · Inferred' : ''}</span></button>
+      <span>${xml(connectionRole(edge))}${edge.inferred ? ' · Inferred' : ''}</span></button>
       <div class="connection-files">${edge.evidence.map(evidence).join('<br>')}</div></li>`;
   }).join('');
   inspector.innerHTML = `<button class="dismiss" type="button" aria-label="Close component details" data-dismiss>×</button>
     <span class="type" style="background:${style.light};color:${style.ink}">${style.label}</span>
     <h3>${xml(node.title)}</h3><p class="tech">${xml(node.tech)}</p>
+    <p class="role">${xml(componentRole(node))}</p>
     <section><h4>Source evidence</h4>${files ? `<ul>${files}</ul>` : '<p class="empty">No source references.</p>'}</section>
     <section><h4>Connections</h4>${connections ? `<ul>${connections}</ul>` : '<p class="empty">No connections detected.</p>'}</section>`;
   inspector.scrollTop = 0;

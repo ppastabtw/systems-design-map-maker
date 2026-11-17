@@ -1,4 +1,5 @@
 import { parseAllDocuments } from 'yaml';
+import { componentRole, describeUnit, httpRequests, routeTopic } from './roles.js';
 
 const importPattern = /(?:\bfrom\s+|\brequire\s*\(\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]|^\s*(?:from\s+([.\w]+)\s+import\b|(?:import|using|use)\s+([\w.]+))/gm;
 const sourceImports = content => [...content.matchAll(importPattern)].map(match => match[1] ?? match[2] ?? match[3]);
@@ -41,12 +42,18 @@ const resourceSignals = [
   ['stripe', 'Stripe', 'external', /\b(?:import stripe|from stripe|new Stripe)\b|(?:['"]stripe['"]|stripe\/stripe-php)/i],
   ['openai', 'OpenAI API', 'external', /\b(?:import openai|from openai|new OpenAI)\b|(?:['"]openai['"]|api\.openai\.com)/i],
   ['supabase', 'Supabase', 'external', /@supabase\/supabase-js|\bfrom supabase\b|\.supabase\.co\b/i],
-  ['elasticsearch', 'Elasticsearch', 'database', /@elastic\/elasticsearch|\b(?:from|import) elasticsearch\b|\belasticsearch:/i]
+  ['elasticsearch', 'Elasticsearch', 'database', /@elastic\/elasticsearch|\b(?:from|import) elasticsearch\b|\belasticsearch:/i],
+  ['memcached', 'Memcached', 'cache', /\bmemcached\b/i],
+  ['nginx', 'NGINX', 'gateway', /^nginx$/i],
+  ['traefik', 'Traefik', 'gateway', /^traefik$/i],
+  ['haproxy', 'HAProxy', 'gateway', /^haproxy$/i],
+  ['caddy', 'Caddy', 'gateway', /^caddy$/i]
 ];
 
 const typeLabels = {
   frontend: 'Frontend', api: 'API', worker: 'Worker', database: 'Database',
-  queue: 'Queue / cache', external: 'External service', cli: 'CLI', library: 'Library', service: 'Service'
+  queue: 'Queue / cache', cache: 'Cache', gateway: 'Gateway', external: 'External service',
+  cli: 'CLI', library: 'Library', service: 'Service'
 };
 
 const resourceConfiguration = {
@@ -76,7 +83,7 @@ function packageInfo(file) {
     try {
       const info = JSON.parse(file.content);
       const dependencies = Object.keys(info.dependencies || {}).map(name => JSON.stringify(name)).join(' ');
-      return { name: typeof info.name === 'string' ? info.name : null, dependencies,
+      return { name: typeof info.name === 'string' ? info.name : null, description: info.description, dependencies,
         runnable: Boolean(info.scripts?.start || info.scripts?.dev || info.bin),
         cli: Boolean(info.bin), workspace: Boolean(info.workspaces), library: Boolean(info.exports || info.main) };
     } catch { return {}; }
@@ -85,6 +92,7 @@ function packageInfo(file) {
     const { content } = file;
     const section = content.split(/^\[(?:project|package|tool\.poetry)\][ \t]*\r?$/m)[1]?.split(/^\[/m)[0];
     return { name: section?.match(/^name\s*=\s*["']([^"']+)/m)?.[1],
+      description: section?.match(/^description\s*=\s*(["'])(.+?)\1[ \t]*\r?$/m)?.[2],
       cli: /^(?:\[\[bin\]\]|\[project\.scripts\]|\[tool\.poetry\.scripts\])/m.test(content),
       workspace: /^\[workspace\]/m.test(content) && !section, dependencies: content };
   }
@@ -163,15 +171,16 @@ export function analyzeRepository(repository) {
     return result;
   }
 
-  function edge(from, to, label, evidence, inferred = false) {
+  function edge(from, to, label, evidence, inferred = false, flow) {
     if (from === to) return;
     const key = JSON.stringify([from, to]);
     const existing = edges.get(key);
     if (!existing || (existing.inferred && !inferred) ||
       (existing.inferred === inferred && existing.label === 'Depends on' && label !== 'Depends on')) {
-      edges.set(key, { from, to, label, inferred, evidence: [...new Set([evidence, ...existing?.evidence ?? []])].slice(0, 4) });
-    } else if (!existing.evidence.includes(evidence) && existing.evidence.length < 4) {
-      existing.evidence.push(evidence);
+      edges.set(key, { from, to, label, inferred, flow, evidence: [...new Set([evidence, ...existing?.evidence ?? []])].slice(0, 4) });
+    } else {
+      if (existing.label === label && !existing.flow && flow) existing.flow = flow;
+      if (!existing.evidence.includes(evidence) && existing.evidence.length < 4) existing.evidence.push(evidence);
     }
   }
 
@@ -179,7 +188,8 @@ export function analyzeRepository(repository) {
     const root = directory(file.path);
     const pkg = packages.get(root) ?? { evidence: file.path, dependencies: '' };
     const info = packageInfo(file);
-    packages.set(root, { ...pkg, ...info, name: info.name || pkg.name,
+    packages.set(root, { ...pkg, ...info, name: info.name || pkg.name, description: info.description ?? pkg.description,
+      descriptionPath: info.description ? file.path : pkg.descriptionPath,
       dependencies: `${pkg.dependencies}\n${info.dependencies ?? ''}` });
   }
   for (const file of files.filter(file => file.kind === 'code')) {
@@ -191,7 +201,8 @@ export function analyzeRepository(repository) {
     const nested = [...packages.keys(), ...units.keys()].some(other => other && other !== root && (!root || other.startsWith(root + '/')));
     if (!info.workspace && (root || info.runnable || info.cli || !nested)) units.set(root, info.evidence);
   }
-  if (!units.size) units.set('', files.find(file => file.kind === 'code')?.path ?? files[0]?.path);
+  const firstSource = files.find(file => file.kind === 'code');
+  if (!units.size && firstSource) units.set('', firstSource.path);
 
   const cliRoots = [...packages].filter(([, info]) => info.cli).map(([root]) => root);
   for (const file of files.filter(file => file.kind === 'code')) {
@@ -219,6 +230,9 @@ export function analyzeRepository(repository) {
     const title = profile.type === 'api' && /^(?:web|server|app)$/i.test(display) ? `${asTitle(display)} API` : asTitle(display);
     const result = node(`unit:${root}`, title || 'Project', profile.type, profile.tech, evidence);
     if (profile.evidence) node(result.id, null, null, null, profile.evidence);
+    const description = describeUnit(result, scoped, info);
+    result.role = description.role;
+    result.roleEvidence = description.evidence;
   }
 
   const primaryCompose = path => /(?:^|\/)(?:docker-)?compose\.ya?ml$/i.test(path);
@@ -286,13 +300,15 @@ export function analyzeRepository(repository) {
     const configValues = [...content.matchAll(/(?:\b(?:process\.env|os\.environ)\.([A-Z][A-Z_]+)|['"]([A-Z][A-Z_]+)['"]|['"]((?:[a-z]+(?:\+[a-z]+)?):\/\/[^'"\s]+)['"])/g)]
       .map(match => match[1] ?? match[2] ?? match[3]).join(' ');
     for (const [id, title, type, pattern] of resourceSignals) {
+      if (type === 'gateway') continue;
       const detected = file.kind === 'manifest' ? pattern.test(content) :
         specifiers.some(value => pattern.test(JSON.stringify(value))) || resourceConfiguration[id]?.test(configValues);
       if (!detected) continue;
       const result = node(`resource:${id}`, title, type, title, file.path);
       const action = type === 'database' ? 'Reads / writes' : type === 'queue' && nodes.get(from)?.type === 'worker' ? 'Consumes' :
         type === 'queue' ? 'Uses' : 'Calls';
-      edge(from, result.id, action, file.path, true);
+      const flow = ({ stripe: 'Requests payments', openai: 'Calls model API', s3: 'Uses object storage' })[id];
+      edge(from, result.id, action, file.path, true, flow);
     }
     if (file.kind !== 'code') continue;
     for (const specifier of specifiers) {
@@ -308,13 +324,25 @@ export function analyzeRepository(repository) {
       const target = serviceNames.get(match[1]);
       if (target) edge(from, target, 'HTTP', file.path);
     }
+    const requestPaths = new Map();
+    for (const request of httpRequests(content)) {
+      const target = serviceNames.get(request.host);
+      if (!target) continue;
+      if (!requestPaths.has(target)) requestPaths.set(target, []);
+      requestPaths.get(target).push(request.path);
+    }
+    for (const [target, paths] of requestPaths) {
+      const topic = routeTopic(paths);
+      edge(from, target, 'HTTP', file.path, false, topic ? `Requests ${topic}` : undefined);
+    }
     const endpoints = /^\s*(?:(?:export\s+)?(?:const|let)\s+)?[\w]*(?:API_URL|BASE_URL|API_ENDPOINT)\s*(?::\s*\w+)?\s*=\s*['"`]https:\/\/([a-z\d.-]+)(?=[:/'"`])/gmi;
     for (const [, hostname] of content.matchAll(endpoints)) {
       const domain = hostname.toLowerCase().replace(/^(?:api|app|www)\./, '');
       if (!domain.includes('.') || /(?:^|\.)(?:example\.(?:com|org|net)|localhost|test|invalid|local)$/.test(domain) ||
         /^[\d.]+$/.test(domain) || [...nodes.values()].some(item => item.type === 'external' && domain.startsWith(item.id.slice('resource:'.length) + '.'))) continue;
       const result = node(`host:${domain}`, domain, 'external', 'HTTP endpoint', file.path);
-      edge(from, result.id, 'HTTP', file.path, true);
+      const flow = /^(?:backboard\.io|openrouter\.ai)$/.test(domain) ? 'Calls model API' : 'Calls external API';
+      edge(from, result.id, 'HTTP', file.path, true, flow);
     }
   }
 
@@ -323,11 +351,20 @@ export function analyzeRepository(repository) {
   if (fronts.length === 1 && apis.length === 1) {
     const frontend = fronts[0];
     const root = frontend.id.slice('unit:'.length);
-    const request = scopedFiles.get(root)?.find(file => file.kind === 'code' &&
-      /(?:\bfetch\s*\(|\baxios(?:\.|\())\s*[`'"](?:\/api\/|https?:\/\/(?:localhost|127\.0\.0\.1):)/.test(file.content));
-    if (request) edge(frontend.id, apis[0].id, 'HTTP', request.path, true);
+    const requests = scopedFiles.get(root)?.filter(file => file.kind === 'code').flatMap(file =>
+      httpRequests(file.content).filter(request => request.host === '' ? request.path.startsWith('/api/') :
+        /^(?:localhost|127\.0\.0\.1)$/.test(request.host)).map(request => ({ ...request, evidence: file.path }))) ?? [];
+    if (requests.length) {
+      const topic = routeTopic(requests.map(request => request.path));
+      const source = requests.find(request => routeTopic([request.path]) === topic) ?? requests[0];
+      edge(frontend.id, apis[0].id, 'HTTP', source.evidence, true, topic ? `Requests ${topic}` : undefined);
+    }
   }
 
+  if (!nodes.size) {
+    const title = asTitle(repository.name.split('/').at(-1)) || 'Project';
+    node('unit:', title, 'service', 'Project', files[0]?.path).role = 'Role unclear from sampled files';
+  }
   const allNodes = [...nodes.values()];
   const weight = id => [...edges.values()].filter(pair => pair.from === id || pair.to === id).length;
   const selected = allNodes.length > 12 ? allNodes
@@ -335,6 +372,7 @@ export function analyzeRepository(repository) {
   if (selected.length < allNodes.length) notes.push(`Showing 12 of ${allNodes.length} detected components to keep the map readable.`);
   const ids = new Set(selected.map(item => item.id));
   return { version: 1, repository: { name: repository.name, url: repository.url, revision: repository.revision },
-    nodes: selected, edges: [...edges.values()].filter(pair => ids.has(pair.from) && ids.has(pair.to)),
+    nodes: selected.map(item => ({ ...item, role: componentRole(item) })),
+    edges: [...edges.values()].filter(pair => ids.has(pair.from) && ids.has(pair.to)),
     filesScanned: files.length, notes };
 }

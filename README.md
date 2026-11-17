@@ -1,6 +1,6 @@
 # System Map
 
-[Open System Map](https://ppastabtw.github.io/systems-design-map-maker/) to turn a repository into a high-level architecture diagram. Paste a public GitHub URL or open a local project folder, then select any component to see its connections and the files behind them.
+[Open System Map](https://ppastabtw.github.io/systems-design-map-maker/) to turn a repository into a high-level architecture diagram. The map illustrates each component, describes its role, and labels its connections. Paste a public GitHub URL or open a local project folder, then select any component to see the files behind it.
 
 The analyzer runs in your browser. Public GitHub repositories are fetched directly from GitHub. Local folders stay on your device, including private checkouts. There is no account or API key to configure.
 
@@ -37,7 +37,7 @@ Copy `system-map.svg` to your portfolio's static assets and render it as an imag
 
 ## What the map can infer
 
-System Map samples source files, package manifests, and deployment configuration to find applications, library packages, APIs, workers, and infrastructure. It uses evidence such as workspace boundaries, imports, Docker Compose dependencies, Kubernetes workloads, framework entry points, and known integrations. Dashed arrows are inferred from evidence such as a database driver or service URL. A single-package library may produce just one component.
+System Map samples source files, package manifests, and deployment configuration to find applications, library packages, APIs, workers, and infrastructure. Route names, job definitions, and package descriptions help explain what components do. When those clues are sparse, the map describes the component type. Dashed arrows are inferred from evidence such as a database driver or service URL. A single-package library may produce just one component.
 
 The map is a starting point for review. Custom layouts, unrecognized stacks, and runtime or infrastructure defined outside a repo can leave gaps. Large trees are sampled and maps show up to 12 components. GitHub's anonymous API has request limits. A local checkout is an alternative when the repository is private or GitHub limits requests.
 

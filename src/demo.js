@@ -1,20 +1,37 @@
 export const demoGraph = {
   version: 1,
-  repository: { name: 'storefront' },
+  repository: {
+    name: 'ppastabtw/Neural-Network-Playground',
+    title: 'Neural Network Playground',
+    url: 'https://github.com/ppastabtw/Neural-Network-Playground',
+    revision: '35f2c6460bea57629f4188eee759e2bebd3e4554'
+  },
   nodes: [
-    { id: 'web', title: 'Storefront Web', type: 'frontend', tech: 'Next.js', role: 'Lets shoppers browse and check out', evidence: ['apps/web/package.json', 'apps/web/src/app/checkout/page.tsx'] },
-    { id: 'api', title: 'Orders API', type: 'api', tech: 'Express', role: 'Validates and creates orders', evidence: ['apps/api/package.json', 'apps/api/src/routes/orders.ts'] },
-    { id: 'db', title: 'PostgreSQL', type: 'database', tech: 'Relational database', role: 'Stores orders and their status', evidence: ['compose.yaml', 'apps/api/src/db.ts'] },
-    { id: 'queue', title: 'Order Queue', type: 'queue', tech: 'Redis', role: 'Holds pending fulfillment jobs', evidence: ['compose.yaml', 'apps/api/src/queue.ts'] },
-    { id: 'worker', title: 'Order Worker', type: 'worker', tech: 'BullMQ', role: 'Fulfills paid orders in the background', evidence: ['apps/worker/src/main.ts'] },
-    { id: 'payment', title: 'Stripe', type: 'external', tech: 'Payments API', role: 'Processes card payments', evidence: ['apps/api/src/payments.ts'] }
+    { id: 'web', title: 'Playground UI', type: 'frontend', tech: 'React',
+      role: 'Builds models and shows live training progress',
+      evidence: ['src/frontend/src/pages/ModelBuilder.jsx', 'src/frontend/src/components/TrainingPanel.jsx'] },
+    { id: 'gateway', title: 'Nginx', type: 'gateway', tech: 'Nginx',
+      role: 'Serves the React app and forwards API calls',
+      evidence: ['deploy/nginx.conf'] },
+    { id: 'api', title: 'Playground API', type: 'api', tech: 'FastAPI',
+      role: 'Manages models, datasets, and training sessions',
+      evidence: ['src/backend/api/main.py', 'src/backend/api/routes/models.py', 'src/backend/api/routes/training.py'] },
+    { id: 'engine', title: 'Training Engine', type: 'worker', tech: 'PyTorch · in-process',
+      role: 'Trains neural networks on selected datasets',
+      evidence: ['src/backend/training/engine.py', 'src/backend/api/routes/training.py'] },
+    { id: 'db', title: 'PostgreSQL', type: 'database', tech: 'PostgreSQL',
+      role: 'Stores model configs, sessions, and metrics',
+      evidence: ['src/backend/db_models.py', 'src/backend/database.py', 'src/backend/api/core/config.py'] }
   ],
   edges: [
-    { from: 'web', to: 'api', label: 'HTTP', flow: 'Submits order', evidence: ['apps/web/src/app/checkout/page.tsx'] },
-    { from: 'api', to: 'db', label: 'Reads / writes', flow: 'Saves order', evidence: ['apps/api/src/db.ts'] },
-    { from: 'api', to: 'queue', label: 'Enqueues', flow: 'Queues fulfillment', evidence: ['apps/api/src/queue.ts'] },
-    { from: 'api', to: 'payment', label: 'Charges', flow: 'Requests payment', inferred: true, evidence: ['apps/api/src/payments.ts'] },
-    { from: 'queue', to: 'worker', label: 'Delivers jobs', flow: 'Delivers jobs', evidence: ['apps/worker/src/main.ts'] }
+    { from: 'web', to: 'gateway', label: 'HTTP', flow: 'Sends API requests',
+      evidence: ['src/frontend/src/services/api.js', 'deploy/nginx.conf'] },
+    { from: 'gateway', to: 'api', label: 'HTTP', flow: 'Proxies /api',
+      evidence: ['deploy/nginx.conf', 'deploy/nn-playground.service'] },
+    { from: 'api', to: 'engine', label: 'Calls', flow: 'Runs training jobs',
+      evidence: ['src/backend/api/routes/training.py', 'src/backend/training/engine.py'] },
+    { from: 'api', to: 'db', label: 'Reads / writes', flow: 'Saves runs and metrics',
+      evidence: ['src/backend/api/routes/training.py', 'src/backend/database.py', 'src/backend/db_models.py'] }
   ],
   notes: []
 };

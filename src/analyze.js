@@ -194,7 +194,7 @@ export function analyzeRepository(repository) {
   }
   for (const file of files.filter(file => file.kind === 'code')) {
     const root = file.path.match(/^(?:apps|services|packages|crates|cmd)\/[^/]+(?=\/)/)?.[0] ??
-      file.path.match(/^(?:frontend|backend|web|api|client|server|worker|workers|jobs)(?=\/)/i)?.[0];
+      file.path.match(/^(?:src\/)?(?:frontend|backend|web|api|client|server|worker|workers|jobs)(?=\/)/i)?.[0];
     if (root) units.set(root, file.path);
   }
   for (const [root, info] of packages) {
@@ -351,13 +351,17 @@ export function analyzeRepository(repository) {
   if (fronts.length === 1 && apis.length === 1) {
     const frontend = fronts[0];
     const root = frontend.id.slice('unit:'.length);
-    const requests = scopedFiles.get(root)?.filter(file => file.kind === 'code').flatMap(file =>
+    const clientFiles = scopedFiles.get(root)?.filter(file => file.kind === 'code') ?? [];
+    const requests = clientFiles.flatMap(file =>
       httpRequests(file.content).filter(request => request.host === '' ? request.path.startsWith('/api/') :
-        /^(?:localhost|127\.0\.0\.1)$/.test(request.host)).map(request => ({ ...request, evidence: file.path }))) ?? [];
+        /^(?:localhost|127\.0\.0\.1)$/.test(request.host)).map(request => ({ ...request, evidence: file.path })));
     if (requests.length) {
       const topic = routeTopic(requests.map(request => request.path));
       const source = requests.find(request => routeTopic([request.path]) === topic) ?? requests[0];
       edge(frontend.id, apis[0].id, 'HTTP', source.evidence, true, topic ? `Requests ${topic}` : undefined);
+    } else {
+      const client = clientFiles.find(file => /\baxios\.create\s*\(\s*\{[^}]*?\bbaseURL\s*:\s*['"]\/api\/?['"]/.test(file.content));
+      if (client) edge(frontend.id, apis[0].id, 'HTTP', client.path, true);
     }
   }
 

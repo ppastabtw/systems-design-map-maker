@@ -92,7 +92,7 @@ function selectNode(id) {
 function show(next, isExample = false) {
   graph = next;
   layout = layoutDiagram(graph);
-  get('map-title').textContent = graph.repository.name;
+  get('map-title').textContent = graph.repository.title ?? graph.repository.name;
   const components = `${graph.nodes.length} component${graph.nodes.length === 1 ? '' : 's'}`;
   get('map-meta').textContent = isExample ? `Example map · ${components}` : `${components} · ${graph.filesScanned} files read`;
   get('scan-notes').textContent = graph.notes.join(' ');
@@ -150,6 +150,7 @@ get('sample').addEventListener('click', () => {
   sequence++;
   busy(false);
   status('');
+  get('repo-url').value = '';
   show(demoGraph, true);
 });
 get('zoom-in').addEventListener('click', () => zoom(1.18));

@@ -4,6 +4,8 @@
 
 The analyzer runs in your browser. Public GitHub repositories are fetched directly from GitHub. Local folders stay on your device, including private checkouts. There is no account or API key to configure.
 
+The built-in example is [Neural Network Playground](https://github.com/ppastabtw/Neural-Network-Playground). It shows the deployed request path and the training and storage components, with links to the source files at the revision it describes.
+
 - **Excalidraw** exports an editable drawing. Open the `.excalidraw` file in [Excalidraw](https://excalidraw.com/).
 - **SVG** exports a standalone image for project pages and READMEs.
 - **CLI** writes both formats and a JSON map with source evidence.

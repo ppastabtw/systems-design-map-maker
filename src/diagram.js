@@ -177,7 +177,7 @@ function nodeLabels(node) {
 }
 
 function drawingTitle(graph) {
-  const name = graph.repository.name.split('/').at(-1).replaceAll('-', ' ');
+  const name = graph.repository.title ?? graph.repository.name.split('/').at(-1).replaceAll('-', ' ');
   return shorten(name ? name[0].toUpperCase() + name.slice(1) : 'Project', 36) + ' system design';
 }
 

@@ -59,6 +59,20 @@ test('a library does not get services merely mentioned in its docs or source str
   assert.deepEqual(graph.edges, []);
 });
 
+test('finds nested apps and the connection configured by a relative Axios base URL', () => {
+  const graph = scan({
+    'requirements.txt': 'fastapi',
+    'src/frontend/package.json': '{"name":"playground","dependencies":{"react":"1"}}',
+    'src/frontend/api.js': "import axios from 'axios'; export const api = axios.create({baseURL: '/api'});",
+    'src/backend/api/main.py': 'from fastapi import FastAPI\napp = FastAPI()'
+  });
+  assert.deepEqual(graph.nodes.map(node => node.type), ['frontend', 'api']);
+  assert.deepEqual(graph.edges, [{
+    from: 'unit:src/frontend', to: 'unit:src/backend', label: 'HTTP', inferred: true,
+    flow: undefined, evidence: ['src/frontend/api.js']
+  }]);
+});
+
 test('labels a configured gateway and cache without treating startup ordering as traffic', () => {
   const graph = scan({
     'compose.yaml': 'services:\n  gateway:\n    image: traefik:v3\n    depends_on: [cache]\n  cache:\n    image: memcached:1.6'

@@ -1,4 +1,4 @@
-import { analyzeRepository } from '../src/analyze.js';
+import { generateRepositoryViews } from '../src/workflows.js';
 import { diagramSvg, excalidrawScene, layoutDiagram, styles, xml } from '../src/diagram.js';
 import { readBrowserFolder, readGitHub } from '../src/repository.js';
 import { exampleViews } from '../src/demo.js';
@@ -25,12 +25,12 @@ const canvas = get('canvas');
 const drawing = get('drawing');
 const inspector = get('inspector');
 const folderInput = get('folder-input');
-const exampleNav = get('example-views');
-exampleNav.innerHTML = exampleViews.map(item =>
-  `<button class="text-button" type="button" data-view="${item.id}" aria-pressed="false">${xml(item.label)}</button>`).join('');
+const viewNav = get('diagram-views');
 let graph;
 let layout;
-let selectedExample;
+let selectedView;
+let availableViews = [];
+let showingExample = false;
 let drag;
 let sequence = 0;
 let request;
@@ -89,27 +89,41 @@ function selectNode(id) {
     <h3>${xml(node.title)}</h3><p class="tech">${xml(node.tech)}</p>
     <p class="role">${xml(componentRole(node))}</p>
     ${node.detail ? `<p class="detail">${xml(node.detail)}</p>` : ''}
+    ${node.viewId ? `<button type="button" class="secondary open-workflow" data-open-view="${xml(node.viewId)}">Open ${xml(node.title)} workflow</button>` : ''}
     <section><h4>Source evidence</h4>${files ? `<ul>${files}</ul>` : '<p class="empty">No source references.</p>'}</section>
     <section><h4>Connections</h4>${connections ? `<ul>${connections}</ul>` : '<p class="empty">No connections detected.</p>'}</section>`;
   inspector.scrollTop = 0;
 }
 
-function show(next, example) {
-  graph = next;
-  selectedExample = example;
+function show(selected) {
+  selectedView = selected;
+  graph = selected.graph;
   layout = layoutDiagram(graph);
   get('map-title').textContent = graph.repository.title ?? graph.repository.name;
   const components = `${graph.nodes.length} component${graph.nodes.length === 1 ? '' : 's'}`;
-  get('map-meta').textContent = example ? `Example map · ${components}` : `${components} · ${graph.filesScanned} files read`;
-  exampleNav.hidden = !example;
-  exampleNav.querySelectorAll('[data-view]').forEach(button =>
-    button.setAttribute('aria-pressed', String(button.dataset.view === example?.id)));
+  get('map-meta').textContent = showingExample ? `Example map · ${components}` : `${components} · ${graph.filesScanned} files read`;
+  viewNav.querySelectorAll('[data-view]').forEach(button =>
+    button.setAttribute('aria-pressed', String(button.dataset.view === selected.id)));
   get('scan-notes').textContent = graph.notes.join(' ');
   get('inferred-key').hidden = !graph.edges.some(edge => edge.inferred);
   drawing.style.width = `${layout.width}px`;
   drawing.innerHTML = diagramSvg(graph, { interactive: true, layout, fontUrl });
   selectNode();
   fit();
+}
+
+function openViews(views, example = false) {
+  availableViews = views;
+  showingExample = example;
+  viewNav.hidden = views.length < 2;
+  viewNav.innerHTML = views.map(item =>
+    `<button class="text-button" type="button" data-view="${xml(item.id)}" aria-pressed="false">${xml(item.label)}</button>`).join('');
+  show(views[0]);
+}
+
+function changeView(id) {
+  const next = availableViews.find(item => item.id === id);
+  if (next) show(next);
 }
 
 function status(message, error = false) {
@@ -133,7 +147,7 @@ async function generate(read) {
   try {
     const repository = await read(request.signal);
     if (current !== sequence) return;
-    show(analyzeRepository(repository));
+    openViews(generateRepositoryViews(repository));
     status('');
   } catch (error) {
     if (current === sequence) status(error.name === 'TimeoutError' ? 'GitHub took too long to respond. Try again or open a local folder.' : error.message, true);
@@ -154,21 +168,15 @@ folderInput.addEventListener('change', async () => {
   folderInput.value = '';
   await generate(() => readBrowserFolder(files));
 });
-function openExample(example) {
+get('sample').addEventListener('click', () => {
   request?.abort();
   sequence++;
   busy(false);
   status('');
   get('repo-url').value = '';
-  show(example.graph, example);
-}
-
-get('sample').addEventListener('click', () => openExample(exampleViews[0]));
-exampleNav.addEventListener('click', event => {
-  const button = event.target.closest('[data-view]');
-  const example = exampleViews.find(item => item.id === button?.dataset.view);
-  if (example) openExample(example);
+  openViews(exampleViews, true);
 });
+viewNav.addEventListener('click', event => changeView(event.target.closest('[data-view]')?.dataset.view));
 get('zoom-in').addEventListener('click', () => zoom(1.18));
 get('zoom-out').addEventListener('click', () => zoom(1 / 1.18));
 get('fit').addEventListener('click', fit);
@@ -198,6 +206,12 @@ drawing.addEventListener('keydown', event => {
   selectNode(event.target.closest('[data-node]')?.dataset.node);
 });
 inspector.addEventListener('click', event => {
+  const workflow = event.target.closest('[data-open-view]');
+  if (workflow) {
+    changeView(workflow.dataset.openView);
+    [...viewNav.querySelectorAll('[data-view]')].find(button => button.dataset.view === workflow.dataset.openView)?.focus();
+    return;
+  }
   if (event.target.closest('[data-dismiss]')) {
     const selected = drawing.querySelector('[data-node].active');
     selectNode();
@@ -213,7 +227,7 @@ inspector.addEventListener('click', event => {
 
 function download(content, extension, type) {
   const name = graph.repository.name.split('/').at(-1).replace(/[^\w.-]/g, '-');
-  const suffix = selectedExample && selectedExample !== exampleViews[0] ? '-' + selectedExample.id : '';
+  const suffix = selectedView.id === 'overview' ? '' : '-' + selectedView.id;
   const url = URL.createObjectURL(new Blob([content], { type }));
   const link = document.createElement('a');
   link.download = `${name || 'system-map'}${suffix}.${extension}`;
@@ -223,7 +237,7 @@ function download(content, extension, type) {
 }
 get('export-svg').addEventListener('click', () => download(diagramSvg(graph, { layout, fontUrl, fontLicense }), 'svg', 'image/svg+xml'));
 get('export-excalidraw').addEventListener('click', () => download(JSON.stringify(excalidrawScene(graph, layout), null, 2), 'excalidraw', 'application/json'));
-show(exampleViews[0].graph, exampleViews[0]);
+openViews(exampleViews, true);
 
 const linkedRepository = new URLSearchParams(location.hash.slice(1)).get('repository');
 if (linkedRepository?.trim()) {

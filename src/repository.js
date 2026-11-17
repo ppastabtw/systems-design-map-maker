@@ -4,7 +4,7 @@ const entrypoint = /(?:^|\/)(?:main|server|app|index|worker|routes?|settings|con
 
 const ignoredDirectories = /^(?:\..+|node_modules|vendor|dist|build|coverage|target|__pycache__|third.party|generated|fixtures?|tests?|__tests__|benchmarks?|examples?|samples?)$/i;
 const manifest = /^(?:package\.json|pyproject\.toml|requirements[^/]*\.txt|go\.mod|Cargo\.toml|Gemfile|pom\.xml|build\.gradle(?:\.kts)?|composer\.json|mix\.exs|.*\.(?:csproj|fsproj)|pubspec\.yaml)$/i;
-const deployment = /^(?:Dockerfile[.\w-]*|(?:docker-)?compose(?:[.-][\w-]+)?\.ya?ml|Procfile|vercel\.json|fly\.toml|serverless\.ya?ml|wrangler\.(?:toml|jsonc?))$/i;
+const deployment = /^(?:Dockerfile[.\w-]*|(?:docker-)?compose(?:[.-][\w-]+)?\.ya?ml|nginx\.conf|Procfile|vercel\.json|fly\.toml|serverless\.ya?ml|wrangler\.(?:toml|jsonc?))$/i;
 const code = /\.(?:[cm]?[jt]sx?|py|go|rs|rb|php|java|kts?|cs|fs|swift|exs?|dart|vue|svelte|proto|cpp|cc|c|h|zig|lua|r|jl|scala|clj|kt|sh|sql|tf)$/i;
 
 export function ignoredDirectory(name) {

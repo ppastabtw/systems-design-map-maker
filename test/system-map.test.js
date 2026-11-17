@@ -3,6 +3,7 @@ import test from 'node:test';
 import { analyzeRepository } from '../src/analyze.js';
 import { diagramSvg, excalidrawScene, layoutDiagram } from '../src/diagram.js';
 import { exampleViews } from '../src/demo.js';
+import { generateRepositoryViews } from '../src/workflows.js';
 import { fileKind, parseGitHub, readBrowserFolder, readGitHub } from '../src/repository.js';
 
 const scan = (entries, name = 'project') => analyzeRepository({
@@ -19,6 +20,40 @@ test('exports each example workflow with its visible components and connections'
     assert.equal(scene.elements.find(item => item.id === 'heading').text, graph.title);
     assert.equal(scene.elements.filter(item => item.type === 'arrow').length, graph.edges.length);
   }
+});
+
+test('builds distinct workflows from router endpoints and the UI that calls an imported Axios helper', () => {
+  const entries = {
+    'requirements.txt': 'fastapi',
+    'src/frontend/package.json': '{"name":"workbench","dependencies":{"react":"1"}}',
+    'src/frontend/api.js': "import axios from 'axios';\nexport default axios.create({ baseURL: '/api' });",
+    'src/frontend/models.js': "import api from './api';\nexport const start = id => api.post(\x60/models/\x24{id}/train\x60);\nexport const predict = id => api.post(\x60/training/\x24{id}/predict\x60);",
+    'src/frontend/TrainPanel.jsx': "import { start as runTraining } from './models';\nexport const TrainPanel = () => <button onClick={() => runTraining(1)} />;",
+    'src/frontend/TestingPanel.jsx': "import { predict } from './models';\nexport const TestingPanel = () => <button onClick={() => predict(1)} />;",
+    'src/backend/api/routes/model.py': 'from fastapi import APIRouter\nfrom backend.training.engine import Engine\nrouter = APIRouter(prefix="/api")\n# @router.get("/phantom")\n@router.post("/models/{id}/train")\ndef run(id):\n    return Engine().train()\n@router.post("/training/{id}/predict")\ndef test(id):\n    return Engine().predict()',
+    'src/backend/training/engine.py': 'class Engine:\n    def train(self):\n        optimizer.step()\n    def predict(self):\n        with torch.no_grad():\n            pass'
+  };
+  const repository = { name: 'workbench', files: Object.entries(entries).map(([path, content]) => ({ path, content, kind: fileKind(path) })) };
+  const views = generateRepositoryViews(repository);
+  const train = views.find(item => item.id === 'training').graph;
+  const predictions = views.find(item => item.id === 'predictions').graph;
+  assert.ok(train.nodes.some(node => node.title === 'Train Panel'));
+  assert.ok(predictions.nodes.some(node => node.title === 'Testing Panel'));
+  assert.ok(!train.nodes.some(node => node.title === 'Testing Panel'));
+  assert.ok(!views.some(item => item.id === 'phantom'));
+  assert.ok(train.edges.some(edge => edge.inferred && edge.evidence.includes('src/frontend/models.js')));
+  assert.ok(train.nodes.some(node => node.role === 'Trains the model and updates weights'));
+  assert.ok(predictions.nodes.some(node => node.role === 'Runs inference with trained weights'));
+  assert.ok(views[0].graph.nodes.some(node => node.viewId === 'training'));
+});
+
+test('maps local CommonJS modules when a repository has no API', () => {
+  const views = generateRepositoryViews({ name: 'library', files: [
+    { path: 'index.js', kind: 'code', content: "module.exports = require('./lib/parse');" },
+    { path: 'lib/parse.js', kind: 'code', content: 'module.exports = text => text.trim();' }
+  ] });
+  assert.equal(views[1].id, 'modules');
+  assert.equal(views[1].graph.edges[0].to, 'code:lib/parse.js');
 });
 
 test('recognizes a Compose monorepo and preserves explicit links and their source evidence', () => {

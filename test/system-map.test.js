@@ -2,10 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { analyzeRepository } from '../src/analyze.js';
 import { diagramSvg, excalidrawScene, layoutDiagram } from '../src/diagram.js';
+import { exampleViews } from '../src/demo.js';
 import { fileKind, parseGitHub, readBrowserFolder, readGitHub } from '../src/repository.js';
 
 const scan = (entries, name = 'project') => analyzeRepository({
   name, files: Object.entries(entries).map(([path, content]) => ({ path, content, kind: fileKind(path) }))
+});
+
+test('exports each example workflow with its visible components and connections', () => {
+  for (const { graph } of exampleViews) {
+    const layout = layoutDiagram(graph);
+    assert.equal(layout.nodes.length, graph.nodes.length);
+    assert.equal(layout.edges.length, graph.edges.length);
+    assert.ok(diagramSvg(graph, { layout }).includes(graph.title));
+    const scene = excalidrawScene(graph, layout);
+    assert.equal(scene.elements.find(item => item.id === 'heading').text, graph.title);
+    assert.equal(scene.elements.filter(item => item.type === 'arrow').length, graph.edges.length);
+  }
 });
 
 test('recognizes a Compose monorepo and preserves explicit links and their source evidence', () => {

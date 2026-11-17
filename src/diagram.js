@@ -20,7 +20,7 @@ const ink = '#1e1e1e';
 const pencil = '#495057';
 const paper = '#ffffff';
 const nodeWidth = 172;
-const columnPitch = 242;
+const columnPitch = 274;
 const top = 86;
 const margin = 30;
 const rankOrder = ['frontend', 'cli', 'gateway', 'api', 'service', 'queue', 'worker', 'database', 'cache', 'external', 'library'];
@@ -68,6 +68,17 @@ export function layoutDiagram(graph) {
     const size = Math.ceil(Math.sqrt(disconnected.length));
     disconnected.splice(0).forEach((node, index) => (columns[index % size] ??= []).push(node));
   }
+  for (let rank = 1; rank < columns.length; rank++) {
+    const previous = columns[rank - 1];
+    const positions = new Map(previous.map((node, index) => [node.id, index - (previous.length - 1) / 2]));
+    const scores = new Map(columns[rank].map((node, index, column) => {
+      const sources = graph.edges.filter(edge => edge.to === node.id && positions.has(edge.from));
+      const score = sources.length ? sources.reduce((sum, edge) => sum + positions.get(edge.from), 0) / sources.length :
+        index - (column.length - 1) / 2;
+      return [node.id, score];
+    }));
+    columns[rank].sort((a, b) => scores.get(a.id) - scores.get(b.id));
+  }
   const rows = Math.max(1, ...columns.map(column => column.length));
   const nodeHeight = Math.max(134, ...ordered.map(node => {
     const { role, roleY } = nodeLabels(node);
@@ -88,7 +99,6 @@ export function layoutDiagram(graph) {
     width: nodeWidth, height: nodeHeight
   }));
   const edges = [];
-  const endpointCounts = new Map();
   const importPairs = new Map();
   const routed = [];
   for (const edge of graph.edges.filter(item => placed.has(item.from) && placed.has(item.to))) {
@@ -106,35 +116,54 @@ export function layoutDiagram(graph) {
       routed.push(connection);
     }
   }
+  const ports = new Map();
+  const offsets = new Map();
   for (const edge of routed) {
-    for (const id of [edge.from, edge.to]) endpointCounts.set(id, (endpointCounts.get(id) ?? 0) + 1);
+    const from = placed.get(edge.from);
+    const to = placed.get(edge.to);
+    const headsRight = to.x > from.x;
+    offsets.set(edge, [0, 0]);
+    for (const [index, node, other, side] of [[0, from, to, headsRight], [1, to, from, !headsRight]]) {
+      const key = JSON.stringify([node.id, side]);
+      if (!ports.has(key)) ports.set(key, []);
+      ports.get(key).push({ edge, index, other });
+    }
+  }
+  for (const links of ports.values()) {
+    links.sort((a, b) => a.other.y - b.other.y);
+    links.forEach(({ edge, index }, position) => {
+      offsets.get(edge)[index] = ((position + 1) / (links.length + 1) - 0.5) * 32;
+    });
   }
   let crossing = 0;
-  const used = new Map();
   for (const edge of routed) {
     const from = placed.get(edge.from);
     const to = placed.get(edge.to);
     const rightward = to.x > from.x;
     const adjacent = Math.abs(from.rank - to.rank) === 1;
-    function anchor(item, side) {
-      const index = (used.get(item.id) ?? 0) + 1;
-      used.set(item.id, index);
-      const offset = endpointCounts.get(item.id) < 2 ? 0 : (index / (endpointCounts.get(item.id) + 1) - 0.5) * 30;
+    function anchor(item, side, offset) {
       const spread = symbolWidth / 2;
       return [item.x + nodeWidth / 2 + (side === 'right' ? spread : -spread), item.y + symbolHeight / 2 + offset];
     }
-    const start = anchor(from, rightward ? 'right' : 'left');
-    const end = anchor(to, rightward ? 'left' : 'right');
+    const [fromOffset, toOffset] = offsets.get(edge);
+    const start = anchor(from, rightward ? 'right' : 'left', fromOffset);
+    const end = anchor(to, rightward ? 'left' : 'right', toOffset);
     start[0] += rightward ? 5 : -5;
     end[0] += rightward ? -5 : 5;
+    const bent = adjacent && Math.abs(end[1] - start[1]) > 55;
     let points;
     let label;
     if (adjacent) {
       const midX = (start[0] + end[0]) / 2;
       const midY = (start[1] + end[1]) / 2;
-      const bow = Math.abs(end[1] - start[1]) < 20 ? 9 : 3;
-      points = [start, [midX, midY + bow], end];
-      label = [midX, midY + bow - 10];
+      if (bent) {
+        const turn = rightward ? 21 : -21;
+        points = [start, [midX - turn, start[1]], [midX + turn, end[1]], end];
+        label = [midX, midY - 7];
+      } else {
+        points = [start, [midX, midY + 7], end];
+        label = [midX, midY - 7];
+      }
     } else {
       const track = 66 + (crossing++ % 3) * 6;
       const startGap = start[0] + (rightward ? 18 : -18);
@@ -142,7 +171,7 @@ export function layoutDiagram(graph) {
       points = [start, [startGap, start[1]], [startGap, track], [endGap, track], [endGap, end[1]], end];
       label = [(startGap + endGap) / 2, track - 7];
     }
-    edges.push({ ...edge, points, labelPosition: label });
+    edges.push({ ...edge, points, labelPosition: label, labelLimit: bent ? 14 : 19 });
   }
   return { nodes: [...placed.values()], edges, width, height };
 }
@@ -177,6 +206,7 @@ function nodeLabels(node) {
 }
 
 function drawingTitle(graph) {
+  if (graph.title) return graph.title;
   const name = graph.repository.title ?? graph.repository.name.split('/').at(-1).replaceAll('-', ' ');
   return shorten(name ? name[0].toUpperCase() + name.slice(1) : 'Project', 36) + ' system design';
 }
@@ -213,7 +243,7 @@ export function diagramSvg(graph, { interactive = false, layout = layoutDiagram(
     const body = sketch.linearPath(points, { ...options, disableMultiStroke: edge.inferred });
     const tip = sketch.linearPath(arrowhead(points), options);
     const returnTip = edge.bidirectional ? sketchPaths(sketch.linearPath(arrowhead([...points].reverse()), options)) : '';
-    const labels = wrap(connectionRole(edge), 19, 2);
+    const labels = wrap(connectionRole(edge), edge.labelLimit ?? 19, 2);
     return `<g class="map-edge" stroke-linejoin="round" stroke-linecap="round">
       ${sketchPaths(body, edge.inferred)}${sketchPaths(tip)}${returnTip}
       <text text-anchor="middle" font-family="${handwritten}" font-size="13" fill="${ink}" stroke="${paper}"
@@ -231,7 +261,7 @@ export function diagramSvg(graph, { interactive = false, layout = layoutDiagram(
     return `<g ${key} transform="translate(${node.x} ${node.y})">
       ${selection}
       <g transform="translate(${center - symbolWidth / 2} 0)" stroke-linecap="round" stroke-linejoin="round">
-        ${sketchSymbol(componentSymbol(node.type), seedFor(node.id))}
+        ${sketchSymbol(componentSymbol(node.symbol ?? node.type), seedFor(node.id))}
       </g>
       <text text-anchor="middle" fill="${ink}" font-size="18" font-weight="750">${title.map((line, index) =>
         `<tspan x="${center}" y="${symbolHeight + 19 + index * 18}">${xml(line)}</tspan>`).join('')}</text>
@@ -283,7 +313,7 @@ function linearElement(id, type, points, style) {
 export function excalidrawScene(graph, layout = layoutDiagram(graph)) {
   const arrows = layout.edges.flatMap(({ points, labelPosition, ...edge }, index) => {
     const id = `edge-${index}`;
-    const labels = wrap(connectionRole(edge), 19, 2);
+    const labels = wrap(connectionRole(edge), edge.labelLimit ?? 19, 2);
     return [
       linearElement(id, 'arrow', points, {
         elbowed: false, startArrowhead: edge.bidirectional ? 'arrow' : null, endArrowhead: 'arrow',
@@ -296,7 +326,7 @@ export function excalidrawScene(graph, layout = layoutDiagram(graph)) {
     const id = `node-${index}`;
     const groupIds = [id + '-group'];
     const originX = node.x + (node.width - symbolWidth) / 2;
-    const shapes = componentSymbol(node.type).map((part, partIndex) => {
+    const shapes = componentSymbol(node.symbol ?? node.type).map((part, partIndex) => {
       const partId = `${id}-shape-${partIndex}`;
       const style = { groupIds, backgroundColor: part.fill && part.fill !== 'none' ? part.fill : 'transparent', roughness: 0.52, strokeWidth: 1.25 };
       return part.type === 'line' ? linearElement(partId, 'line', part.points.map(([x, y]) => [originX + x, node.y + y]), style) :

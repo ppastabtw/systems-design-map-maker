@@ -1,7 +1,7 @@
 import { analyzeRepository } from '../src/analyze.js';
 import { diagramSvg, excalidrawScene, layoutDiagram, styles, xml } from '../src/diagram.js';
 import { readBrowserFolder, readGitHub } from '../src/repository.js';
-import { demoGraph } from '../src/demo.js';
+import { exampleViews } from '../src/demo.js';
 import { componentRole, connectionRole } from '../src/roles.js';
 import fontUrl from '../assets/Excalifont.woff2';
 import fontLicense from '../assets/Excalifont-OFL.txt';
@@ -25,8 +25,12 @@ const canvas = get('canvas');
 const drawing = get('drawing');
 const inspector = get('inspector');
 const folderInput = get('folder-input');
+const exampleNav = get('example-views');
+exampleNav.innerHTML = exampleViews.map(item =>
+  `<button class="text-button" type="button" data-view="${item.id}" aria-pressed="false">${xml(item.label)}</button>`).join('');
 let graph;
 let layout;
+let selectedExample;
 let drag;
 let sequence = 0;
 let request;
@@ -84,17 +88,22 @@ function selectNode(id) {
     <span class="type" style="background:${style.light};color:${style.ink}">${style.label}</span>
     <h3>${xml(node.title)}</h3><p class="tech">${xml(node.tech)}</p>
     <p class="role">${xml(componentRole(node))}</p>
+    ${node.detail ? `<p class="detail">${xml(node.detail)}</p>` : ''}
     <section><h4>Source evidence</h4>${files ? `<ul>${files}</ul>` : '<p class="empty">No source references.</p>'}</section>
     <section><h4>Connections</h4>${connections ? `<ul>${connections}</ul>` : '<p class="empty">No connections detected.</p>'}</section>`;
   inspector.scrollTop = 0;
 }
 
-function show(next, isExample = false) {
+function show(next, example) {
   graph = next;
+  selectedExample = example;
   layout = layoutDiagram(graph);
   get('map-title').textContent = graph.repository.title ?? graph.repository.name;
   const components = `${graph.nodes.length} component${graph.nodes.length === 1 ? '' : 's'}`;
-  get('map-meta').textContent = isExample ? `Example map · ${components}` : `${components} · ${graph.filesScanned} files read`;
+  get('map-meta').textContent = example ? `Example map · ${components}` : `${components} · ${graph.filesScanned} files read`;
+  exampleNav.hidden = !example;
+  exampleNav.querySelectorAll('[data-view]').forEach(button =>
+    button.setAttribute('aria-pressed', String(button.dataset.view === example?.id)));
   get('scan-notes').textContent = graph.notes.join(' ');
   get('inferred-key').hidden = !graph.edges.some(edge => edge.inferred);
   drawing.style.width = `${layout.width}px`;
@@ -145,13 +154,20 @@ folderInput.addEventListener('change', async () => {
   folderInput.value = '';
   await generate(() => readBrowserFolder(files));
 });
-get('sample').addEventListener('click', () => {
+function openExample(example) {
   request?.abort();
   sequence++;
   busy(false);
   status('');
   get('repo-url').value = '';
-  show(demoGraph, true);
+  show(example.graph, example);
+}
+
+get('sample').addEventListener('click', () => openExample(exampleViews[0]));
+exampleNav.addEventListener('click', event => {
+  const button = event.target.closest('[data-view]');
+  const example = exampleViews.find(item => item.id === button?.dataset.view);
+  if (example) openExample(example);
 });
 get('zoom-in').addEventListener('click', () => zoom(1.18));
 get('zoom-out').addEventListener('click', () => zoom(1 / 1.18));
@@ -197,16 +213,17 @@ inspector.addEventListener('click', event => {
 
 function download(content, extension, type) {
   const name = graph.repository.name.split('/').at(-1).replace(/[^\w.-]/g, '-');
+  const suffix = selectedExample && selectedExample !== exampleViews[0] ? '-' + selectedExample.id : '';
   const url = URL.createObjectURL(new Blob([content], { type }));
   const link = document.createElement('a');
-  link.download = `${name || 'system-map'}.${extension}`;
+  link.download = `${name || 'system-map'}${suffix}.${extension}`;
   link.href = url;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 get('export-svg').addEventListener('click', () => download(diagramSvg(graph, { layout, fontUrl, fontLicense }), 'svg', 'image/svg+xml'));
 get('export-excalidraw').addEventListener('click', () => download(JSON.stringify(excalidrawScene(graph, layout), null, 2), 'excalidraw', 'application/json'));
-show(demoGraph, true);
+show(exampleViews[0].graph, exampleViews[0]);
 
 const linkedRepository = new URLSearchParams(location.hash.slice(1)).get('repository');
 if (linkedRepository?.trim()) {

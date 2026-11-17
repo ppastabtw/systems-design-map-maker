@@ -4,7 +4,7 @@
 
 The analyzer runs in your browser. Public GitHub repositories are fetched directly from GitHub. Local folders stay on your device, including private checkouts. There is no account or API key to configure.
 
-The built-in example is [Neural Network Playground](https://github.com/ppastabtw/Neural-Network-Playground). It shows the deployed request path and the training and storage components, with links to the source files at the revision it describes.
+The built-in example is [Neural Network Playground](https://github.com/ppastabtw/Neural-Network-Playground). The overview shows the main components. Use **Build**, **Train**, **Test & export**, and **Hosting** to explore a workflow. Components link to source files at the revision they describe. Downloads use the selected view.
 
 - **Excalidraw** exports an editable drawing. Open the `.excalidraw` file in [Excalidraw](https://excalidraw.com/).
 - **SVG** exports a standalone image for project pages and READMEs.
